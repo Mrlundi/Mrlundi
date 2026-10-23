@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mon Budget — Gestion des dépenses</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0f172a; --card:#1e293b; --card2:#273449; --text:#e2e8f0; --muted:#94a3b8;
+  --accent:#38bdf8; --green:#34d399; --red:#f87171; --amber:#fbbf24; --border:#334155;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;padding:0 0 60px}
+header{background:linear-gradient(135deg,#1e40af,#0ea5e9);padding:28px 20px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+header h1{font-size:1.9rem;font-weight:700;letter-spacing:-.5px}
+header p{color:#dbeafe;margin-top:4px;font-size:.95rem}
+.container{max-width:1100px;margin:0 auto;padding:24px 16px}
+.grid{display:grid;gap:18px}
+.cards{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px}
+.stat{display:flex;flex-direction:column;gap:6px}
+.stat .label{color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.5px}
+.stat .value{font-size:1.7rem;font-weight:700}
+.value.green{color:var(--green)} .value.red{color:var(--red)} .value.amber{color:var(--amber)} .value.accent{color:var(--accent)}
+.bar-wrap{height:8px;background:var(--card2);border-radius:6px;overflow:hidden;margin-top:8px}
+.bar-fill{height:100%;background:var(--green);transition:width .4s,background .4s}
+h2{font-size:1.15rem;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.section{margin-top:26px}
+form{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:end}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:.82rem;color:var(--muted)}
+input,select{background:var(--card2);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:9px;font-size:.95rem;width:100%}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+button{cursor:pointer;border:none;border-radius:9px;font-size:.95rem;font-weight:600;padding:11px 18px;transition:opacity .2s}
+button:hover{opacity:.88}
+.btn-primary{background:var(--accent);color:#06263a}
+.btn-ghost{background:var(--card2);color:var(--text);border:1px solid var(--border)}
+.btn-danger{background:transparent;color:var(--red);padding:6px 10px;font-size:.85rem}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.toolbar .spacer{flex:1}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--border);font-size:.92rem}
+th{color:var(--muted);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.4px}
+td.amount{font-weight:700;color:var(--red);text-align:right;white-space:nowrap}
+.tag{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.78rem;font-weight:600;background:var(--card2)}
+.empty{text-align:center;color:var(--muted);padding:34px 10px}
+.charts{grid-template-columns:1fr 1fr}
+.chart-box{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;min-height:300px}
+@media(max-width:720px){.charts{grid-template-columns:1fr}header h1{font-size:1.5rem}}
+.filter-input{max-width:220px}
+.month-input{max-width:180px}
+.footer-note{text-align:center;color:var(--muted);font-size:.82rem;margin-top:30px}
+</style>
+</head>
+<body>
+<header>
+  <h1>💰 Mon Budget</h1>
+  <p>Suivez vos dépenses au quotidien et gardez le contrôle de votre argent</p>
+</header>
+<div class="container">
+
+  <div class="toolbar">
+    <div class="field" style="gap:5px">
+      <label for="monthPicker">Mois affiché</label>
+      <input type="month" id="monthPicker" class="month-input">
+    </div>
+    <div class="field" style="gap:5px">
+      <label for="budgetInput">Budget mensuel (FCFA)</label>
+      <input type="number" id="budgetInput" min="0" step="1000" placeholder="ex : 500000">
+    </div>
+    <div class="spacer"></div>
+    <button class="btn-ghost" id="importBtn">⬆️ Importer CSV</button>
+    <button class="btn-ghost" id="exportBtn">⬇️ Exporter CSV</button>
+    <input type="file" id="importFile" accept=".csv,text/csv" style="display:none">
+  </div>
+
+  <div class="grid cards">
+    <div class="card stat">
+      <span class="label">Budget du mois</span>
+      <span class="value accent" id="statBudget">0,00 €</span>
+    </div>
+    <div class="card stat">
+      <span class="label">Dépensé</span>
+      <span class="value red" id="statSpent">0,00 €</span>
+    </div>
+    <div class="card stat">
+      <span class="label">Restant</span>
+      <span class="value green" id="statLeft">0,00 €</span>
+      <div class="bar-wrap"><div class="bar-fill" id="barFill" style="width:0%"></div></div>
+    </div>
+    <div class="card stat">
+      <span class="label">Nb de dépenses</span>
+      <span class="value" id="statCount">0</span>
+    </div>
+  </div>
+
+  <div class="section card">
+    <h2>➕ Ajouter une dépense</h2>
+    <form id="expenseForm">
+      <div class="field">
+        <label for="desc">Description</label>
+        <input type="text" id="desc" placeholder="ex : Courses Carrefour" required>
+      </div>
+      <div class="field">
+        <label for="amount">Montant (FCFA)</label>
+        <input type="number" id="amount" min="1" step="1" placeholder="0" required>
+      </div>
+      <div class="field">
+        <label for="category">Catégorie</label>
+        <select id="category">
+          <option>Alimentation</option>
+          <option>Logement</option>
+          <option>Transport</option>
+          <option>Loisirs</option>
+          <option>Santé</option>
+          <option>Factures</option>
+          <option>Shopping</option>
+          <option>Restaurant</option>
+          <option>Épargne</option>
+          <option>Autre</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="date">Date</label>
+        <input type="date" id="date" required>
+      </div>
+      <div class="field">
+        <button type="submit" class="btn-primary">Ajouter</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="section grid charts">
+    <div class="chart-box">
+      <h2>📊 Répartition par catégorie</h2>
+      <canvas id="pieChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h2>📈 Dépenses des 6 derniers mois</h2>
+      <canvas id="barChart"></canvas>
+    </div>
+  </div>
+
+  <div class="section card">
+    <div class="toolbar">
+      <h2 style="margin:0">🧾 Mes dépenses</h2>
+      <div class="spacer"></div>
+      <input type="text" id="search" class="filter-input" placeholder="🔍 Rechercher...">
+      <select id="catFilter" style="max-width:180px"><option value="">Toutes catégories</option></select>
+    </div>
+    <div id="tableWrap"></div>
+  </div>
+
+  <p class="footer-note">Vos données sont enregistrées uniquement dans ce navigateur (aucun envoi sur Internet).</p>
+</div>
+<script>
+const STORE_KEY='monbudget_expenses_v1';
+const BUDGET_KEY='monbudget_budgets_v1';
+const fmt=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'XOF',maximumFractionDigits:0}).format(n||0);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const monthKey=d=>d.slice(0,7);
+
+let expenses=JSON.parse(localStorage.getItem(STORE_KEY)||'[]');
+let budgets=JSON.parse(localStorage.getItem(BUDGET_KEY)||'{}');
+let pieChart,barChart;
+
+const $=id=>document.getElementById(id);
+const monthPicker=$('monthPicker'),budgetInput=$('budgetInput');
+
+function save(){localStorage.setItem(STORE_KEY,JSON.stringify(expenses));localStorage.setItem(BUDGET_KEY,JSON.stringify(budgets));}
+function currentMonth(){return monthPicker.value||new Date().toISOString().slice(0,7);}
+
+function init(){
+  const now=new Date();
+  monthPicker.value=now.toISOString().slice(0,7);
+  $('date').value=now.toISOString().slice(0,10);
+  budgetInput.value=budgets[currentMonth()]||'';
+  render();
+}
+
+$('expenseForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const amt=parseFloat($('amount').value);
+  if(!amt||amt<=0)return;
+  expenses.push({id:Date.now(),desc:$('desc').value.trim(),amount:amt,category:$('category').value,date:$('date').value});
+  save();
+  $('desc').value='';$('amount').value='';
+  render();
+});
+
+monthPicker.addEventListener('change',()=>{budgetInput.value=budgets[currentMonth()]||'';render();});
+budgetInput.addEventListener('input',()=>{const v=parseFloat(budgetInput.value);if(v>0)budgets[currentMonth()]=v;else delete budgets[currentMonth()];save();render();});
+$('search').addEventListener('input',render);
+$('catFilter').addEventListener('change',render);
+$('exportBtn').addEventListener('click',exportCSV);
+$('importBtn').addEventListener('click',()=>$('importFile').click());
+$('importFile').addEventListener('change',importCSV);
+
+function deleteExpense(id){expenses=expenses.filter(x=>x.id!==id);save();render();}
+
+function render(){
+  const m=currentMonth();
+  const monthExp=expenses.filter(x=>monthKey(x.date)===m);
+  const spent=monthExp.reduce((s,x)=>s+x.amount,0);
+  const budget=budgets[m]||0;
+  const left=budget-spent;
+  $('statBudget').textContent=fmt(budget);
+  $('statSpent').textContent=fmt(spent);
+  const leftEl=$('statLeft');leftEl.textContent=fmt(left);
+  leftEl.className='value '+(left<0?'red':'green');
+  $('statCount').textContent=monthExp.length;
+  const pct=budget>0?Math.min(100,spent/budget*100):0;
+  const bar=$('barFill');bar.style.width=pct+'%';
+  bar.style.background=pct>=100?'var(--red)':pct>=80?'var(--amber)':'var(--green)';
+
+  const cats=[...new Set(expenses.map(x=>x.category))].sort();
+  const cf=$('catFilter');const cur=cf.value;
+  cf.innerHTML='<option value="">Toutes catégories</option>'+cats.map(c=>`<option>${esc(c)}</option>`).join('');
+  cf.value=cur;
+
+  const q=$('search').value.toLowerCase();const filterCat=cf.value;
+  let rows=monthExp.filter(x=>(!q||x.desc.toLowerCase().includes(q))&&(!filterCat||x.category===filterCat)).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+  const wrap=$('tableWrap');
+  if(rows.length===0){wrap.innerHTML='<div class="empty">Aucune dépense pour ce mois. Ajoutez-en une ci-dessus ☝️</div>';}
+  else{
+    wrap.innerHTML='<table><thead><tr><th>Date</th><th>Description</th><th>Catégorie</th><th style="text-align:right">Montant</th><th></th></tr></thead><tbody>'+
+    rows.map(x=>`<tr><td>${new Date(x.date).toLocaleDateString('fr-FR')}</td><td>${esc(x.desc)||'—'}</td><td><span class="tag">${esc(x.category)}</span></td><td class="amount">${fmt(x.amount)}</td><td><button class="btn-danger" data-del="${x.id}">✕</button></td></tr>`).join('')+'</tbody></table>';
+    wrap.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>deleteExpense(Number(b.dataset.del))));
+  }
+  drawCharts(monthExp);
+}
+
+function drawCharts(monthExp){
+  const byCat={};monthExp.forEach(x=>byCat[x.category]=(byCat[x.category]||0)+x.amount);
+  const labels=Object.keys(byCat),data=Object.values(byCat);
+  const colors=['#38bdf8','#34d399','#fbbf24','#f87171','#a78bfa','#fb923c','#4ade80','#f472b6','#60a5fa','#94a3b8'];
+  if(pieChart)pieChart.destroy();
+  pieChart=new Chart($('pieChart'),{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors}]},options:{plugins:{legend:{labels:{color:'#e2e8f0'}}}}});
+
+  const months=[];const totals=[];const base=new Date(currentMonth()+'-01');
+  for(let i=5;i>=0;i--){const d=new Date(base.getFullYear(),base.getMonth()-i,1);const k=d.toISOString().slice(0,7);months.push(d.toLocaleDateString('fr-FR',{month:'short',year:'2-digit'}));totals.push(expenses.filter(x=>monthKey(x.date)===k).reduce((s,x)=>s+x.amount,0));}
+  if(barChart)barChart.destroy();
+  barChart=new Chart($('barChart'),{type:'bar',data:{labels:months,datasets:[{label:'Dépenses (FCFA)',data:totals,backgroundColor:'#38bdf8'}]},options:{plugins:{legend:{labels:{color:'#e2e8f0'}}},scales:{x:{ticks:{color:'#94a3b8'},grid:{color:'#334155'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#334155'}}}}});
+}
+
+function importCSV(e){
+  const file=e.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    let text=String(ev.target.result).replace(/^\ufeff/,'').replace(/\r\n?/g,'\n');
+    const lines=text.split('\n').filter(l=>l.trim()!=='');
+    if(lines.length===0){alert('Fichier vide.');return;}
+    const sep=(lines[0].split(';').length>=(lines[0].split(',').length))?';':',';
+    let start=0;
+    if(/date/i.test(lines[0])&&/montant|amount/i.test(lines[0]))start=1;
+    let added=0,errors=0;
+    for(let i=start;i<lines.length;i++){
+      const cols=parseLine(lines[i],sep);
+      if(cols.length<4){errors++;continue;}
+      const date=normDate(cols[0]);
+      const desc=(cols[1]||'').trim();
+      const category=(cols[2]||'Autre').trim()||'Autre';
+      const amount=parseFloat(String(cols[3]).replace(/\s/g,'').replace(',','.'));
+      if(!date||!(amount>0)){errors++;continue;}
+      expenses.push({id:Date.now()+i,desc,amount,category,date});
+      added++;
+    }
+    save();render();
+    alert(added+' dépense(s) importée(s)'+(errors?' — '+errors+' ligne(s) ignorée(s) (format invalide).':'.'));
+    e.target.value='';
+  };
+  reader.readAsText(file,'UTF-8');
+}
+function parseLine(line,sep){
+  const out=[];let cur='';let inQ=false;
+  for(let i=0;i<line.length;i++){const c=line[i];
+    if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+    else if(c===sep&&!inQ){out.push(cur);cur='';}
+    else cur+=c;}
+  out.push(cur);return out.map(s=>s.trim());
+}
+function normDate(s){
+  s=(s||'').trim();
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);if(m)return s;
+  m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if(m)return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  const d=new Date(s);if(!isNaN(d))return d.toISOString().slice(0,10);
+  return null;
+}
+
+function exportCSV(){
+  const m=currentMonth();
+  const rows=expenses.filter(x=>monthKey(x.date)===m);
+  if(rows.length===0){alert('Aucune dépense à exporter pour ce mois.');return;}
+  let csv='Date;Description;Catégorie;Montant (FCFA)\n';
+  rows.forEach(x=>{csv+=`${x.date};"${x.desc.replace(/"/g,'""')}";${x.category};${Math.round(x.amount)}\n`;});
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='budget_'+m+'.csv';a.click();
+}
+
+init();
+</script>
+</body>
+</html>
